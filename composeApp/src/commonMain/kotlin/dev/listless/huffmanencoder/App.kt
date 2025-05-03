@@ -34,7 +34,8 @@ import org.jetbrains.compose.resources.Font
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
 private const val notesBackground = 0xFFFFF8B8
-
+private const val initialMessage =
+  "Lorem ipsum dolor sit amet, consectetur adipiscing elit"
 private val paddingSmall = 8.dp
 private val paddingMedium = 16.dp
 private val maxWidth = 420.dp
@@ -43,34 +44,18 @@ private val maxWidth = 420.dp
 @Preview
 fun App() {
   MaterialTheme {
-    var message by remember { mutableStateOf("Lorem ipsum dolor sit amet, consectetur adipiscing elit") }
-    var tokenLevel by remember { mutableStateOf(TokenLevel.WORD) }
-    var root by remember {
-      mutableStateOf(
-        buildTree(
-          calculateFrequency(
-            message,
-            tokenLevel
-          )
-        )
-      )
-    }
-    var encoded by remember {
-      mutableStateOf(
-        encode(
-          message,
-          tokenLevel,
-          buildDictionary(root)
-        )
-      )
-    }
+    var message by remember { mutableStateOf(initialMessage) }
+    var tokenLevel by remember { mutableStateOf(TokenLevel.RUNE) }
+    var printedTree by remember { mutableStateOf("") }
+    var encoded by remember { mutableStateOf("") }
 
     fun onEachChange() {
-      val freq = calculateFrequency(message, tokenLevel)
-      val tree = buildTree(freq)
-      val dictionary = buildDictionary(tree)
-      root = tree
-      encoded = encode(message, tokenLevel, dictionary)
+      val tokens = splitToTokens(message, tokenLevel)
+      val freq = calculateFrequency(tokens)
+      val root = buildTree(freq)
+      val dictionary = buildDictionary(root)
+      encoded = encode(tokens, dictionary)
+      printedTree = print(root)
     }
 
     LazyColumn(
@@ -82,9 +67,7 @@ fun App() {
         TextField(
           label = { Text("Message to be encoded") },
           value = message,
-          onValueChange = {
-            message = it
-          },
+          onValueChange = { message = it },
           modifier = Modifier.fillMaxWidth(),
           minLines = 8,
           maxLines = Int.MAX_VALUE,
@@ -97,9 +80,7 @@ fun App() {
         ) {
           Row(
             modifier = Modifier.fillMaxWidth().clickable(
-              onClick = {
-                tokenLevel = TokenLevel.RUNE
-              }
+              onClick = { tokenLevel = TokenLevel.RUNE }
             ),
             verticalAlignment = Alignment.CenterVertically,
           ) {
@@ -111,9 +92,7 @@ fun App() {
           }
           Row(
             modifier = Modifier.fillMaxWidth().clickable(
-              onClick = {
-                tokenLevel = TokenLevel.WORD
-              }
+              onClick = { tokenLevel = TokenLevel.WORD }
             ),
             verticalAlignment = Alignment.CenterVertically) {
             RadioButton(
@@ -138,14 +117,14 @@ fun App() {
         )
       }
       item {
-        FrequencyTree(root)
+        FrequencyTree(printedTree)
       }
     }
   }
 }
 
 @Composable
-fun FrequencyTree(root: FrequencyNode) {
+fun FrequencyTree(text: String) {
   Column(modifier = Modifier.fillMaxWidth().padding(vertical = paddingMedium)) {
     SelectionContainer {
       Text(
@@ -158,7 +137,7 @@ fun FrequencyTree(root: FrequencyNode) {
             Font(Res.font.CascadiaCode)
           ),
         ),
-        text = print(root),
+        text = text,
         maxLines = Int.MAX_VALUE,
       )
     }
@@ -166,28 +145,18 @@ fun FrequencyTree(root: FrequencyNode) {
 }
 
 fun encode(
-  message: String,
-  tokenLevel: TokenLevel,
+  tokens: List<String>,
   dictionary: Map<String, String>
 ): String {
+  print("encode($tokens, $dictionary)")
+
   val out = StringBuilder()
 
-  if (tokenLevel == TokenLevel.RUNE) {
-    for (c in message) {
-      out.append(dictionary["$c"] ?: '�')
-    }
-    if (out.isEmpty()) {
-      out.append(dictionary[message])
-    }
-  } else {
-    for (t in message.split(" ")) {
-      out.append(dictionary[t] ?: '�')
-    }
-    if (out.isEmpty()) {
-      out.append(dictionary[message])
-    }
+  for (t in tokens) {
+    out.append(dictionary[t] ?: '�')
   }
 
+  print("encode=$out")
   return out.toString()
 }
 
@@ -212,6 +181,7 @@ fun buildDictionary(root: FrequencyNode): Map<String, String> {
   visit(root)
   if (root.isLeaf) root.encoding = "0"
 
+  print("buildDictionary=$dict")
   return dict
 }
 
@@ -228,7 +198,10 @@ fun buildTree(counts: Map<String, Int>): FrequencyNode {
     parent.second = second
     minHeap.offer(parent)
   }
-  return minHeap.pop()
+  val root = minHeap.pop()
+  print("buildTree=")
+  print(print(root))
+  return root
 }
 
 enum class TokenLevel {
@@ -237,20 +210,32 @@ enum class TokenLevel {
 }
 
 fun calculateFrequency(
-  message: String,
-  tokenLevel: TokenLevel
+  tokens: List<String>
 ): Map<String, Int> {
   val counts = HashMap<String, Int>()
 
+  for (t in tokens) {
+    counts[t] = (counts[t] ?: 0) + 1
+  }
+
+  print("calculateFrequency=$counts")
+  return counts
+}
+
+fun splitToTokens(message: String, tokenLevel: TokenLevel): List<String> {
+  val tokens = mutableListOf<String>()
+
   if (tokenLevel == TokenLevel.RUNE) {
     for (c in message) {
-      counts["$c"] = (counts["$c"] ?: 0) + 1
+      if (c == ' ') tokens.add("whitespace")
+      else tokens.add("$c")
     }
   } else {
     for (t in message.split(" ")) {
-      counts[t] = (counts[t] ?: 0) + 1
+      tokens.add(t)
     }
   }
 
-  return counts
+  print("tokens=$tokens")
+  return tokens
 }
